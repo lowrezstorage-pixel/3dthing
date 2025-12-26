@@ -3,112 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>iOS Gyro 3D Viewer</title>
+    <title>3D Gyro Viewer</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #1a1a1a; font-family: sans-serif; }
-        canvas { display: block; }
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         #overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
-            display: flex; justify-content: center; align-items: center; z-index: 10;
+            background: rgba(0,0,0,0.9);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100;
+            color: white; text-align: center; padding: 20px;
         }
         #startButton {
-            padding: 15px 30px; font-size: 18px; color: white;
-            background: #007AFF; border: none; border-radius: 25px;
-            cursor: pointer; box-shadow: 0 4px 15px rgba(0,122,255,0.4);
-        }
-        #info {
-            position: absolute; bottom: 20px; width: 100%; text-align: center;
-            color: #888; pointer-events: none;
+            padding: 20px 40px; font-size: 20px; font-weight: bold; color: white;
+            background: #007AFF; border: none; border-radius: 50px;
+            cursor: pointer; margin-bottom: 20px;
         }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <button id="startButton">Enable Gyro Control</button>
+        <button id="startButton">START 3D VIEW</button>
+        <p>Tap to allow Gyroscope access</p>
     </div>
-    <div id="info">Rotate device to look around</div>
-
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://esm.sh/three@0.160.0",
-                "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/"
-            }
-        }
-    </script>
 
     <script type="module">
-        import * as THREE from 'three';
-        // Note the .js extension is not needed with esm.sh imports usually, 
-        // but we keep the structure clean for the importmap
-        import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        // Using Skypack - more reliable for Three.js JSM modules
+        import * as THREE from 'https://cdn.skypack.dev/three@0.160.0';
+        import { DeviceOrientationControls } from 'https://cdn.skypack.dev/three@0.160.0/examples/jsm/controls/DeviceOrientationControls.js';
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
         let camera, scene, renderer, controls;
-        const startButton = document.getElementById('startButton');
-        const overlay = document.getElementById('overlay');
 
         init();
         animate();
 
         function init() {
+            // Scene & Camera
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x222222);
+            scene.background = new THREE.Color(0x111111);
             
-            const gridHelper = new THREE.GridHelper(50, 50);
-            scene.add(gridHelper);
-
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 2, 5);
+            camera.position.set(0, 1.5, 5);
 
+            // Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight.position.set(5, 10, 7);
-            scene.add(directionalLight);
+            // Lights
+            const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+            scene.add(light);
 
-            // Placeholder Cube
+            // Visual Reference (The Cube)
             const geometry = new THREE.BoxGeometry(2, 2, 2);
-            const material = new THREE.MeshStandardMaterial({ color: 0x00ff88 });
+            const material = new THREE.MeshPhongMaterial({ color: 0x007AFF });
             const cube = new THREE.Mesh(geometry, material);
             cube.position.y = 1;
             scene.add(cube);
+            
+            scene.add(new THREE.GridHelper(20, 20));
 
+            // Default Touch Controls
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
 
             window.addEventListener('resize', onWindowResize);
-            startButton.addEventListener('click', requestAccess);
+            document.getElementById('startButton').addEventListener('click', setupGyro);
         }
 
-        function requestAccess() {
+        async function setupGyro() {
+            // Handle iOS Permission
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            enableGyroControls();
-                        } else {
-                            alert("Permission denied.");
-                            overlay.style.display = 'none';
-                        }
-                    })
-                    .catch(console.error);
+                try {
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    if (response === 'granted') {
+                        activateGyro();
+                    }
+                } catch (e) {
+                    console.error("Permission denied or error:", e);
+                }
             } else {
-                enableGyroControls();
+                // Android or Desktop
+                activateGyro();
             }
+            document.getElementById('overlay').style.display = 'none';
         }
 
-        function enableGyroControls() {
-            overlay.style.display = 'none';
-            controls.dispose();
+        function activateGyro() {
+            controls.dispose(); // Kill orbit controls
             controls = new DeviceOrientationControls(camera);
         }
 
@@ -120,7 +102,7 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            controls.update();
+            if (controls) controls.update();
             renderer.render(scene, camera);
         }
     </script>
